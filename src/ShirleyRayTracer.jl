@@ -10,7 +10,7 @@ const Point3 = SVector{3, Float64}
 const Color = RGB{Float64}
 
 export Scene, Camera, Point3, Vec3
-export trace_scanline, render
+export trace_scanline, render_pixel, render, render!
 export magnitude, add!, randf
 
 magnitude(x,y) = sqrt(x^2 + y^2)
@@ -32,7 +32,7 @@ function random_in_unit_disk()
 	x,y
 end
 
-function random_in_unit_sphere() 
+function random_in_unit_sphere()
 	x,y,z = randf(-1,1), randf(-1,1), randf(-1,1)
 	while magnitudesq(x,y,z) >= 1
 		x,y,z = randf(-1,1), randf(-1,1), randf(-1,1)
@@ -42,12 +42,12 @@ end
 
 random_unit_vector() = normalize(random_in_unit_sphere())
 
-function random_in_hemisphere(normal) 
+function random_in_hemisphere(normal)
     in_unit_sphere = random_in_unit_sphere()
     dot(in_unit_sphere, normal) > 0.0 ? in_unit_sphere : -in_unit_sphere
 end
 
-function refract(uv, n, etai_over_etat) 
+function refract(uv, n, etai_over_etat)
     cos_theta = min(dot(-uv, n), 1.0)
     r_out_perp = etai_over_etat * (uv + cos_theta*n)
     r_out_parallel = -sqrt(abs(1.0 - magnitudesq(r_out_perp))) * n
@@ -96,7 +96,7 @@ struct Camera
 	Camera() = Camera(Point3(0,0,-1), Point3(0,0,0), Vec3(0,1,0), 40, 1, 0, 10)
 end
 
-struct Hit 
+struct Hit
 	p::Point3
 	normal::Vec3
 	t::Float64
@@ -106,13 +106,13 @@ end
 abstract type Material end
 abstract type Hitable end
 
-include("Hitables.jl")
 include("Materials.jl")
+include("Hitables.jl")
 
-struct Scene
+struct Scene{H<:Hitable}
 	camera::Camera
-	hitables::Vector{Hitable}
-	Scene(cam) = new(cam, Vector{Hitable}())
+	hitables::Vector{H}
+	Scene{H}(cam) where H = new(cam, Vector{H}())
 end
 
 add!(s::Scene, h::Hitable) = push!(s.hitables, h)
@@ -128,7 +128,7 @@ end
 function trace(scene::Scene, ray::Ray, t_min::Float64, t_max::Float64)
 	closest_t = Inf
 	struck = 0
-	
+
 	for i in 1:length(scene.hitables)
 		t = trace(scene.hitables[i], ray, t_min, closest_t)
 		if t >= 0
@@ -140,7 +140,7 @@ function trace(scene::Scene, ray::Ray, t_min::Float64, t_max::Float64)
 end
 
 function ray_color(scene::Scene, ray::Ray, depth)::Tuple{Float64, Float64, Float64}
-	if depth <= 0 
+	if depth <= 0
         	return 0,0,0
 	end
 
@@ -150,7 +150,7 @@ function ray_color(scene::Scene, ray::Ray, depth)::Tuple{Float64, Float64, Float
 		t1m = 1.0 - t
 		return t1m + 0.5t, t1m + 0.7t, t1m + t
 	end
-	
+
 	obj = scene.hitables[struck]
 	s, a = scatter(obj.material, ray, hit(obj, t, ray))
 	if s.origin.x == Inf
@@ -162,26 +162,28 @@ end
 
 rgb(r, g, b) = RGB(clamp(sqrt(r), 0, 1), clamp(sqrt(g), 0, 1), clamp(sqrt(b), 0, 1))
 
-function trace_scancol(scene, x, nsamples, width, height, max_depth)
-	scancol = Vector{RGB}(undef, height)
-	for y in 1:height
-		r=g=b=0.0
-		for _ in 1:nsamples
-			(r,g,b) = (r,g,b) .+ ray_color(scene, get_ray(scene, (x + rand()) / width, (y + rand()) / height), max_depth)
-		end
-		@inbounds scancol[height-y+1] = rgb(r/nsamples, g/nsamples, b/nsamples)
+
+function render_pixel(x, y, scene, height, width, nsamples, max_depth)
+	r=g=b=0.0
+	for _ in 1:nsamples
+		(r,g,b) = (r,g,b) .+ ray_color(scene, get_ray(scene, (x + rand()) / width, (y + rand()) / height), max_depth)
 	end
-	scancol
+	rgb(r/nsamples, g/nsamples, b/nsamples)
 end
 
-function render(scene::Scene, width, height, nsamples=10, max_depth=50)
-	image = Array{RGB, 2}(undef, height, width)
-	Threads.@threads for x in 1:width
-		@inbounds image[:, x] = trace_scancol(scene, x, nsamples, width, height, max_depth)
-	end
+
+using Tullio
+
+function render!(image, scene::Scene, width, height, nsamples=10, max_depth=50)
+	@tullio image[y, x] = render_pixel(x, height-y+1, scene, height, width, nsamples, max_depth)
 	image
 end
 
+function render(scene::Scene, width, height, nsamples=10, max_depth=50)
+	image = Array{RGB{N0f8}, 2}(undef, height, width)
+	render!(image, scene, width, height, nsamples, max_depth)
+	image
+end
 
 ###
 end

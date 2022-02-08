@@ -35,7 +35,7 @@ struct Dielectric <: Material
 	ir::Float64
 end
 
-function scatter(d::Dielectric, ray::Ray, hit::Hit) 
+function scatter(d::Dielectric, ray::Ray, hit::Hit)
 
 	function reflectance(cosine, ratio)
 		r = ((1-ratio) / (1+ratio))^2

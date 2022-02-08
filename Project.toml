@@ -8,6 +8,7 @@ Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Traceur = "37b6cedf-1f77-55f8-9503-c64b63398394"
+Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 
 [compat]
 julia = "1"

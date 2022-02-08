@@ -14,11 +14,11 @@ using Images
 
 ==#
 
-function add_random_scene!(scene::Scene) 
+function add_random_scene!(scene::Scene)
 
-	add!(scene, Sphere(Point3(0,-1000,0), 1000, Lambertian(0.5, 0.5, 0.5)))
+	add!(scene, Sphere(Point3(0,-1000,0), 1000.0, Lambertian(0.5, 0.5, 0.5)))
 
-	rand_material(p) = if p < 0.8 
+	rand_material(p) = if p < 0.8
 				Lambertian()
 			elseif p < 0.95
 				rf = randf(0.5, 1)
@@ -39,11 +39,15 @@ function add_random_scene!(scene::Scene)
 	add!(scene, Sphere(Point3(4, 1, 0), 1.0, Metal(0.7,0.6,0.5, 0.0)))
 end
 
-function main(;filename="render.jpg", image_width=1200, aspect_ratio=16/9, samples_per_pixel=10, max_depth=50)
+function main(;filename="render.png", image_width=640, aspect_ratio=16/9, samples_per_pixel=5, max_depth=5)
 	image_height = round(Int, image_width / aspect_ratio)
-	world = Scene(Camera(Point3(13.,2.,3.), zero(Point3), Vec3(0,1,0), 20, aspect_ratio, 0.1, 10.0))
+
+	# H = ShirleyRayTracer.Hitable
+	H = Union{Sphere{Lambertian}, Sphere{Metal}, Sphere{Dielectric}}
+	world = Scene{H}(Camera(Point3(13.,2.,3.), zero(Point3), Vec3(0,1,0), 20, aspect_ratio, 0.1, 10.0))
+
 	add_random_scene!(world)
-	image = render(world, image_width, image_height, samples_per_pixel, max_depth)
+
+	@time image = render(world, image_width, image_height, samples_per_pixel, max_depth)
 	save(filename, image)
 end
-

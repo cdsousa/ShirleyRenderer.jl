@@ -1,9 +1,11 @@
 
 
-struct Sphere <: Hitable
+# struct Sphere <: Hitable
+struct Sphere{M<:Material} <: Hitable
 	center::Point3
 	radius::Float64
-	material::Material
+	# material::Material
+	material::M
 end
 
 export Sphere, Hit
@@ -29,7 +31,7 @@ function trace(sphere::Sphere, ray::Ray, t_min::Float64, t_max::Float64)::Float6
 
 	sqrtd = sqrt(discriminant)
 	root = (-half_b - sqrtd) / a
-	if t_max < root || root < t_min 
+	if t_max < root || root < t_min
 		root = (-half_b + sqrtd) / a
 		if t_max < root || root < t_min
 			return -1.0
