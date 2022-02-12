@@ -4,6 +4,11 @@ module ShirleyRayTracer
 using StaticArrays
 using LinearAlgebra
 using Images
+using CUDA
+using KernelAbstractions
+using CUDAKernels
+using Tullio
+import Adapt
 
 const Vec3 = SVector{3, Float64}
 const Point3 = SVector{3, Float64}
@@ -109,13 +114,13 @@ abstract type Hitable end
 include("Materials.jl")
 include("Hitables.jl")
 
-struct Scene{H<:Hitable}
+struct Scene{H}
 	camera::Camera
-	hitables::Vector{H}
-	Scene{H}(cam) where H = new(cam, Vector{H}())
+	hitables::H
 end
 
-add!(s::Scene, h::Hitable) = push!(s.hitables, h)
+Adapt.adapt_structure(to, x::Scene) = Scene(Adapt.adapt(to, x.camera), Adapt.adapt(to, x.hitables))
+
 
 get_ray(scene::Scene, s, t) = get_ray(scene.camera, s, t)
 
@@ -139,50 +144,55 @@ function trace(scene::Scene, ray::Ray, t_min::Float64, t_max::Float64)
 	struck, closest_t
 end
 
-function ray_color(scene::Scene, ray::Ray, depth)::Tuple{Float64, Float64, Float64}
-	if depth <= 0
-        	return 0,0,0
-	end
+function ray_color(scene::Scene, ray::Ray, depth)
+	rgb = RGB(1.0,1.0,1.0)
 
-	struck, t = trace(scene, ray, 0.001, Inf)
-	if struck == 0
-		t = 0.5*(ray.udirection.y + 1.0)
-		t1m = 1.0 - t
-		return t1m + 0.5t, t1m + 0.7t, t1m + t
-	end
+	while depth > 0
+		struck, t = trace(scene, ray, 0.001, Inf)
+		if struck == 0
+			t = 0.5*(ray.udirection.y + 1.0)
+			t1m = 1.0 - t
+			rgb = rgb ⊙ RGB(t1m + 0.5t, t1m + 0.7t, t1m + t)
+			return rgb
+		end
 
-	obj = scene.hitables[struck]
-	s, a = scatter(obj.material, ray, hit(obj, t, ray))
-	if s.origin.x == Inf
-		return 0,0,0
+		obj = scene.hitables[struck]
+		ray, a = scatter(obj.material, ray, hit(obj, t, ray))
+		if ray.origin.x == Inf
+			break
+		end
+		rgb = rgb ⊙ a
+
+		depth -= 1
 	end
-	r,g,b = ray_color(scene, s, depth-1)
-	a.r * r, a.g * g, a.b * b
+	return RGB(0.0,0.0,0.0)
 end
 
 rgb(r, g, b) = RGB(clamp(sqrt(r), 0, 1), clamp(sqrt(g), 0, 1), clamp(sqrt(b), 0, 1))
 
 
 function render_pixel(x, y, scene, height, width, nsamples, max_depth)
-	r=g=b=0.0
+	c = RGB(0.0,0.0,0.0)
 	for _ in 1:nsamples
-		(r,g,b) = (r,g,b) .+ ray_color(scene, get_ray(scene, (x + rand()) / width, (y + rand()) / height), max_depth)
+		c += ray_color(scene, get_ray(scene, (x + rand()) / width, (y + rand()) / height), max_depth)
 	end
-	rgb(r/nsamples, g/nsamples, b/nsamples)
+	c /= nsamples
+	rgb(c.r, c.g, c.b)
 end
 
-
-using Tullio
-
-function render!(image, scene::Scene, width, height, nsamples=10, max_depth=50)
+function render!(image, scene, width, height, nsamples=10, max_depth=50)
 	@tullio image[y, x] = render_pixel(x, height-y+1, scene, height, width, nsamples, max_depth)
 	image
 end
 
-function render(scene::Scene, width, height, nsamples=10, max_depth=50)
-	image = Array{RGB{N0f8}, 2}(undef, height, width)
+function render(A::Type{<:AbstractArray}, scene::Scene, width, height, nsamples=10, max_depth=50)
+	image = A{RGB{Float64}, 2}(undef, height, width)
 	render!(image, scene, width, height, nsamples, max_depth)
 	image
+end
+
+function render(scene::Scene, width, height, nsamples=10, max_depth=50)
+	render(Array, image, scene, width, height, nsamples, max_depth)
 end
 
 ###
